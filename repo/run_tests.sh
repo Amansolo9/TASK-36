@@ -48,26 +48,53 @@ fi
 cd ..
 
 # ─────────────────────────────────────────────
-# Frontend Tests & Build (run inside Docker for consistent Chromium + Node environment)
+# Frontend Tests & Build (single Docker run — install once, run both)
 # ─────────────────────────────────────────────
 FRONTEND_DIR="$(cd frontend && pwd)"
 
-run_section "FRONTEND UNIT TESTS"
-echo "Running Angular tests (single run, headless via Docker)..."
-if docker run --rm \
+run_section "FRONTEND UNIT TESTS & BUILD"
+echo "Running Angular tests and production build inside Docker..."
+
+FRONTEND_RESULT_FILE=$(mktemp)
+docker run --rm \
     -v "${FRONTEND_DIR}/src":/app/src \
     -v "${FRONTEND_DIR}/package.json":/app/package.json \
     -v "${FRONTEND_DIR}/package-lock.json":/app/package-lock.json \
     -v "${FRONTEND_DIR}/angular.json":/app/angular.json \
     -v "${FRONTEND_DIR}/tsconfig.json":/app/tsconfig.json \
     -v "${FRONTEND_DIR}/tsconfig.spec.json":/app/tsconfig.spec.json \
+    -v "${FRONTEND_DIR}/tsconfig.app.json":/app/tsconfig.app.json \
     -v "${FRONTEND_DIR}/karma.conf.js":/app/karma.conf.js \
+    -v "${FRONTEND_DIR}/ngsw-config.json":/app/ngsw-config.json \
+    -v "${FRONTEND_RESULT_FILE}":/tmp/results \
     -w /app node:20-alpine sh -c "
-    apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont >/dev/null 2>&1 &&
-    export CHROME_BIN=/usr/bin/chromium-browser &&
-    npm ci 2>&1 &&
+    set +e
+    apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont >/dev/null 2>&1
+    export CHROME_BIN=/usr/bin/chromium-browser
+    npm ci 2>&1
+
+    echo '--- UNIT TESTS ---'
     npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox 2>&1
-" 2>&1; then
+    TEST_EXIT=\$?
+
+    echo '--- PRODUCTION BUILD ---'
+    npx ng build --configuration production 2>&1
+    BUILD_EXIT=\$?
+
+    echo \"TEST_EXIT=\${TEST_EXIT}\" > /tmp/results
+    echo \"BUILD_EXIT=\${BUILD_EXIT}\" >> /tmp/results
+    exit 0
+" 2>&1
+
+# Parse results
+TEST_EXIT=1
+BUILD_EXIT=1
+if [ -f "$FRONTEND_RESULT_FILE" ]; then
+    . "$FRONTEND_RESULT_FILE"
+fi
+rm -f "$FRONTEND_RESULT_FILE"
+
+if [ "$TEST_EXIT" -eq 0 ]; then
     echo -e "${GREEN}✓ Frontend tests passed${NC}"
     PASS=$((PASS + 1))
 else
@@ -75,20 +102,7 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-run_section "FRONTEND PRODUCTION BUILD"
-echo "Building Angular for production..."
-if docker run --rm \
-    -v "${FRONTEND_DIR}/src":/app/src \
-    -v "${FRONTEND_DIR}/package.json":/app/package.json \
-    -v "${FRONTEND_DIR}/package-lock.json":/app/package-lock.json \
-    -v "${FRONTEND_DIR}/angular.json":/app/angular.json \
-    -v "${FRONTEND_DIR}/tsconfig.json":/app/tsconfig.json \
-    -v "${FRONTEND_DIR}/tsconfig.app.json":/app/tsconfig.app.json \
-    -v "${FRONTEND_DIR}/ngsw-config.json":/app/ngsw-config.json \
-    -w /app node:20-alpine sh -c "
-    npm ci 2>&1 &&
-    npx ng build --configuration production 2>&1
-" 2>&1; then
+if [ "$BUILD_EXIT" -eq 0 ]; then
     echo -e "${GREEN}✓ Frontend build succeeded${NC}"
     PASS=$((PASS + 1))
 else
