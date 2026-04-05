@@ -293,7 +293,7 @@ class OrderServiceTest {
                 .thenReturn(Optional.of(deliveryOrder));
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> orderService.verifyPickup(11L, "123456", 1L, "CUSTOMER"));
+                () -> orderService.verifyPickup(11L, "123456", 5L, "STAFF"));
         assertEquals("Order is not a pickup order", ex.getMessage());
     }
 
@@ -316,7 +316,7 @@ class OrderServiceTest {
                 .thenReturn(Optional.of(verifiedOrder));
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> orderService.verifyPickup(12L, "123456", 1L, "CUSTOMER"));
+                () -> orderService.verifyPickup(12L, "123456", 5L, "STAFF"));
         assertEquals("Pickup already verified", ex.getMessage());
     }
 }

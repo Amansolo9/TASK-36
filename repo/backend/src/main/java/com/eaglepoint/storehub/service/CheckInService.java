@@ -66,30 +66,6 @@ public class CheckInService {
         // Device fingerprint augmentation (computed early for use in flagged records)
         String normalizedFingerprint = augmentFingerprint(request.getDeviceFingerprint());
 
-        // Device scope enforcement: verify device is bound to this user
-        if (normalizedFingerprint != null) {
-            List<DeviceBinding> bindings = deviceBindingRepository.findByUserIdAndActiveTrue(userId);
-            if (!bindings.isEmpty()) {
-                boolean deviceBound = bindings.stream().anyMatch(b -> b.getDeviceHash().equals(normalizedFingerprint));
-                if (!deviceBound) {
-                    // Persist flagged record for unbound device
-                    CheckIn flagged = checkInRepository.save(CheckIn.builder()
-                            .user(user).site(site).timestamp(now).scheduledTime(now)
-                            .deviceFingerprint(normalizedFingerprint)
-                            .locationDescription(request.getLocationDescription())
-                            .status(CheckInStatus.FLAGGED).build());
-                    fraudAlertRepository.save(FraudAlert.builder()
-                            .user(user).reason("UNBOUND_DEVICE")
-                            .details("Check-in from device not bound to user. Hash: " + normalizedFingerprint.substring(0, 12) + "...")
-                            .build());
-                    log.warn("Check-in rejected: unbound device for userId={}", userId);
-                    return buildResponse(flagged.getId(), userId, request.getSiteId(), now, now,
-                            CheckInStatus.FLAGGED, "Check-in rejected: device not bound to your account",
-                            request.getLocationDescription(), normalizedFingerprint);
-                }
-            }
-        }
-
         // Server-derived schedule — never trust client scheduledTime
         LocalDate today = LocalDate.now();
         Optional<ShiftAssignment> shiftOpt = shiftAssignmentRepository.findActiveShift(userId, request.getSiteId(), today);

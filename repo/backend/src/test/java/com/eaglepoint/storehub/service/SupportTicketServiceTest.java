@@ -172,11 +172,12 @@ class SupportTicketServiceTest {
 
         assertNotNull(response);
         assertNotNull(response.getFirstResponseDueAt());
-        // SLA is 8 hours from creation; the due time should be in the future
+        // SLA is 8 business hours from creation; the due time should be in the future
         assertTrue(response.getFirstResponseDueAt().isAfter(Instant.now()));
-        // And within approximately 8 hours (allow a small buffer for test execution)
+        // Business-hours SLA can span multiple calendar days (weekends, after-hours);
+        // verify it's within a reasonable bound of 5 calendar days
         assertTrue(response.getFirstResponseDueAt().isBefore(
-                Instant.now().plus(Duration.ofHours(8)).plus(Duration.ofSeconds(5))));
+                Instant.now().plus(Duration.ofDays(5))));
     }
 
     @Test

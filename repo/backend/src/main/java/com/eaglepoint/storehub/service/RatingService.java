@@ -96,9 +96,9 @@ public class RatingService {
                 .ratedUser(ratedUser)
                 .targetType(request.getTargetType())
                 .stars(request.getStars())
-                .timelinessScore(request.getTimelinessScore())
-                .communicationScore(request.getCommunicationScore())
-                .accuracyScore(request.getAccuracyScore())
+                .timelinessScore(request.getTimelinessScore() != null ? request.getTimelinessScore() : 0)
+                .communicationScore(request.getCommunicationScore() != null ? request.getCommunicationScore() : 0)
+                .accuracyScore(request.getAccuracyScore() != null ? request.getAccuracyScore() : 0)
                 .comment(request.getComment())
                 .build();
 

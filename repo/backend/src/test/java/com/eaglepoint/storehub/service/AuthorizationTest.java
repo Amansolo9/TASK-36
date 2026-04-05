@@ -57,7 +57,7 @@ class AuthorizationTest {
     @Test
     void siteManager_canAccessOwnSite() {
         mockPrincipal(1L, "SITE_MANAGER", 10L);
-        when(organizationRepository.findAllSiteIdsUnder(10L)).thenReturn(List.of(10L, 11L));
+        lenient().when(organizationRepository.findAllSiteIdsUnder(10L)).thenReturn(List.of(10L, 11L));
         assertTrue(siteAuth.canAccessSite(10L));
     }
 
@@ -94,9 +94,9 @@ class AuthorizationTest {
         }
         UserPrincipal principal = new UserPrincipal(user);
         Authentication auth = mock(Authentication.class);
-        when(auth.getPrincipal()).thenReturn(principal);
+        lenient().when(auth.getPrincipal()).thenReturn(principal);
         SecurityContext ctx = mock(SecurityContext.class);
-        when(ctx.getAuthentication()).thenReturn(auth);
+        lenient().when(ctx.getAuthentication()).thenReturn(auth);
         SecurityContextHolder.setContext(ctx);
     }
 }
