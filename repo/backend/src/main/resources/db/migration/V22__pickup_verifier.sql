@@ -1,0 +1,2 @@
+ALTER TABLE orders ADD COLUMN verified_by_id BIGINT REFERENCES users(id);
+ALTER TABLE orders ADD COLUMN verified_at TIMESTAMPTZ;

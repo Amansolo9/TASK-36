@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/storehub
+    username: ${DB_USERNAME:storehub}
+    password: ${DB_PASSWORD:storehub}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET}
+    jwt-expiration-ms: 1800000
+    idle-timeout-ms: 1800000
+    recent-auth-window-ms: 600000
+  encryption:
+    aes-key: ${AES_KEY}
+  evidence:
+    storage-path: ${EVIDENCE_STORAGE_PATH:./evidence-storage}
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:4200}
+  bootstrap:
+    admin-username: ${BOOTSTRAP_ADMIN_USERNAME:#{null}}
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:#{null}}
+    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:#{null}}

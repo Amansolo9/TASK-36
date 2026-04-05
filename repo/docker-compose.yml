@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-storehub}
+      POSTGRES_USER: ${POSTGRES_USER:-storehub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-storehub}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U storehub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_USERNAME: ${DB_USERNAME:-storehub}
+      DB_PASSWORD: ${DB_PASSWORD:-storehub}
+      JWT_SECRET: ${JWT_SECRET:-bG9jYWxkZXZlbG9wbWVudG9ubHlrZXlub3Rmb3Jwcm9kdWN0aW9u}
+      AES_KEY: ${AES_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Dev!Storehub99}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@storehub.local}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
