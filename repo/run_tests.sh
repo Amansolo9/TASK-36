@@ -48,36 +48,53 @@ fi
 cd ..
 
 # ─────────────────────────────────────────────
-# Frontend Tests
+# Frontend Tests & Build (run inside Docker for consistent Chromium + Node environment)
 # ─────────────────────────────────────────────
-run_section "FRONTEND UNIT TESTS"
+FRONTEND_DIR="$(cd frontend && pwd)"
 
-echo "Running Angular tests (single run, headless)..."
-cd frontend
-if npx ng test --watch=false --browsers=ChromeHeadless 2>&1; then
+run_section "FRONTEND UNIT TESTS"
+echo "Running Angular tests (single run, headless via Docker)..."
+if docker run --rm \
+    -v "${FRONTEND_DIR}/src":/app/src \
+    -v "${FRONTEND_DIR}/package.json":/app/package.json \
+    -v "${FRONTEND_DIR}/package-lock.json":/app/package-lock.json \
+    -v "${FRONTEND_DIR}/angular.json":/app/angular.json \
+    -v "${FRONTEND_DIR}/tsconfig.json":/app/tsconfig.json \
+    -v "${FRONTEND_DIR}/tsconfig.spec.json":/app/tsconfig.spec.json \
+    -v "${FRONTEND_DIR}/karma.conf.js":/app/karma.conf.js \
+    -w /app node:20-alpine sh -c "
+    apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont >/dev/null 2>&1 &&
+    export CHROME_BIN=/usr/bin/chromium-browser &&
+    npm ci 2>&1 &&
+    npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox 2>&1
+" 2>&1; then
     echo -e "${GREEN}✓ Frontend tests passed${NC}"
     PASS=$((PASS + 1))
 else
     echo -e "${RED}✗ Frontend tests failed${NC}"
     FAIL=$((FAIL + 1))
 fi
-cd ..
 
-# ─────────────────────────────────────────────
-# Frontend Build
-# ─────────────────────────────────────────────
 run_section "FRONTEND PRODUCTION BUILD"
-
 echo "Building Angular for production..."
-cd frontend
-if npx ng build --configuration production 2>&1; then
+if docker run --rm \
+    -v "${FRONTEND_DIR}/src":/app/src \
+    -v "${FRONTEND_DIR}/package.json":/app/package.json \
+    -v "${FRONTEND_DIR}/package-lock.json":/app/package-lock.json \
+    -v "${FRONTEND_DIR}/angular.json":/app/angular.json \
+    -v "${FRONTEND_DIR}/tsconfig.json":/app/tsconfig.json \
+    -v "${FRONTEND_DIR}/tsconfig.app.json":/app/tsconfig.app.json \
+    -v "${FRONTEND_DIR}/ngsw-config.json":/app/ngsw-config.json \
+    -w /app node:20-alpine sh -c "
+    npm ci 2>&1 &&
+    npx ng build --configuration production 2>&1
+" 2>&1; then
     echo -e "${GREEN}✓ Frontend build succeeded${NC}"
     PASS=$((PASS + 1))
 else
     echo -e "${RED}✗ Frontend build failed${NC}"
     FAIL=$((FAIL + 1))
 fi
-cd ..
 
 # ─────────────────────────────────────────────
 # Static Checks
