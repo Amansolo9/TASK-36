@@ -2,11 +2,13 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from './core/services/auth.service';
+import { OfflineStatusComponent } from './shared/components/offline-status.component';
+import { ReauthDialogComponent } from './shared/components/reauth-dialog.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, OfflineStatusComponent, ReauthDialogComponent],
   template: `
     @if (authService.isAuthenticated()) {
       <nav class="main-nav">
@@ -31,6 +33,8 @@ import { AuthService } from './core/services/auth.service';
         </div>
       </nav>
     }
+    <app-offline-status />
+    <app-reauth-dialog />
     <router-outlet />
   `,
   styles: [`

@@ -24,12 +24,14 @@ public class SiteAuthorizationService {
      * STAFF/CUSTOMER can only access their own site.
      */
     public boolean canAccessSite(Long siteId) {
-        if (siteId == null) return true;
         UserPrincipal principal = getCurrentPrincipal();
         if (principal == null) return false;
 
         Role role = Role.valueOf(principal.getRole());
         if (role == Role.ENTERPRISE_ADMIN) return true;
+
+        // Null site: deny for non-admins (prevents accidental broad access)
+        if (siteId == null) return false;
 
         Long userSiteId = principal.getSiteId();
         if (userSiteId == null) return false;
@@ -63,6 +65,26 @@ public class SiteAuthorizationService {
         Role role = Role.valueOf(principal.getRole());
         if (role != Role.ENTERPRISE_ADMIN && role != Role.SITE_MANAGER && role != Role.TEAM_LEAD && role != Role.STAFF) {
             throw new AccessDeniedException("Access denied");
+        }
+    }
+
+    /**
+     * Enforces that a device hash matches the expected binding for the operation.
+     * Call when a device-scoped action requires the device to be the bound one.
+     */
+    public void requireDeviceMatch(String expectedHash, String actualHash) {
+        if (expectedHash != null && !expectedHash.equals(actualHash)) {
+            throw new AccessDeniedException("Device scope mismatch");
+        }
+    }
+
+    /**
+     * Enforces that a work-order/shift assignment exists and is active.
+     * The shift assignment acts as the work-order binding for check-in operations.
+     */
+    public void requireWorkOrderScope(boolean hasActiveAssignment) {
+        if (!hasActiveAssignment) {
+            throw new AccessDeniedException("No active work-order/shift assignment for this operation");
         }
     }
 

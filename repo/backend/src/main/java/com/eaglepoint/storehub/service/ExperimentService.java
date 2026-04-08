@@ -1,16 +1,23 @@
 package com.eaglepoint.storehub.service;
 
 import com.eaglepoint.storehub.annotation.Audited;
+import com.eaglepoint.storehub.config.AccessDeniedException;
 import com.eaglepoint.storehub.dto.ExperimentDto;
 import com.eaglepoint.storehub.entity.Experiment;
 import com.eaglepoint.storehub.entity.ExperimentOutcome;
+import com.eaglepoint.storehub.entity.Organization;
 import com.eaglepoint.storehub.entity.User;
 import com.eaglepoint.storehub.enums.ExperimentType;
+import com.eaglepoint.storehub.enums.Role;
 import com.eaglepoint.storehub.repository.ExperimentOutcomeRepository;
 import com.eaglepoint.storehub.repository.ExperimentRepository;
+import com.eaglepoint.storehub.repository.OrganizationRepository;
 import com.eaglepoint.storehub.repository.UserRepository;
+import com.eaglepoint.storehub.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,11 +26,13 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Deterministic bucketing service that assigns users to experiment variants
  * using a hash of user_id + experiment_name. No external server required.
+ *
+ * Site-scoping: SITE_MANAGER can only create/mutate experiments scoped to their site.
+ * ENTERPRISE_ADMIN can manage all experiments (global and site-scoped).
  */
 @Slf4j
 @Service
@@ -34,6 +43,7 @@ public class ExperimentService {
 
     private final ExperimentRepository experimentRepository;
     private final ExperimentOutcomeRepository outcomeRepository;
+    private final OrganizationRepository organizationRepository;
     private final UserRepository userRepository;
 
     @Audited(action = "CREATE", entityType = "Experiment")
@@ -43,12 +53,32 @@ public class ExperimentService {
             throw new IllegalArgumentException("Experiment name already exists");
         }
 
+        UserPrincipal principal = getCurrentPrincipal();
+        Role role = Role.valueOf(principal.getRole());
+
+        Organization site = null;
+        if (role == Role.SITE_MANAGER) {
+            // SITE_MANAGER must scope experiments to their own site
+            Long siteId = dto.getSiteId() != null ? dto.getSiteId() : principal.getSiteId();
+            if (siteId == null || !siteId.equals(principal.getSiteId())) {
+                throw new AccessDeniedException(
+                        "Site managers can only create experiments for their own site");
+            }
+            site = organizationRepository.findById(siteId)
+                    .orElseThrow(() -> new IllegalArgumentException("Site not found"));
+        } else if (role == Role.ENTERPRISE_ADMIN && dto.getSiteId() != null) {
+            // ENTERPRISE_ADMIN can optionally scope to a site
+            site = organizationRepository.findById(dto.getSiteId())
+                    .orElseThrow(() -> new IllegalArgumentException("Site not found"));
+        }
+
         Experiment exp = Experiment.builder()
                 .name(dto.getName())
                 .type(dto.getType())
                 .variantCount(dto.getVariantCount())
                 .active(true)
                 .description(dto.getDescription())
+                .site(site)
                 .build();
 
         return toDto(experimentRepository.save(exp));
@@ -56,7 +86,23 @@ public class ExperimentService {
 
     @Transactional(readOnly = true)
     public List<ExperimentDto> getActiveExperiments() {
+        UserPrincipal principal = getCurrentPrincipal();
+        Role role = Role.valueOf(principal.getRole());
+
+        if (role == Role.ENTERPRISE_ADMIN) {
+            return experimentRepository.findByActiveTrue().stream()
+                    .map(this::toDto).toList();
+        }
+
+        // Non-admin users see their site-scoped + global experiments
+        Long siteId = principal.getSiteId();
+        if (siteId != null) {
+            return experimentRepository.findActiveBySiteOrGlobal(siteId).stream()
+                    .map(this::toDto).toList();
+        }
+        // No site — only global experiments
         return experimentRepository.findByActiveTrue().stream()
+                .filter(e -> e.getSite() == null)
                 .map(this::toDto).toList();
     }
 
@@ -94,6 +140,7 @@ public class ExperimentService {
     public ExperimentDto updateExperiment(Long experimentId, ExperimentDto dto) {
         Experiment exp = experimentRepository.findById(experimentId)
                 .orElseThrow(() -> new IllegalArgumentException("Experiment not found"));
+        enforceExperimentAccess(exp);
         exp.setDescription(dto.getDescription());
         exp.setVariantCount(dto.getVariantCount());
         exp.setVersion(exp.getVersion() + 1); // Increment version on config change
@@ -105,6 +152,7 @@ public class ExperimentService {
     public ExperimentDto deactivate(Long experimentId) {
         Experiment exp = experimentRepository.findById(experimentId)
                 .orElseThrow(() -> new IllegalArgumentException("Experiment not found"));
+        enforceExperimentAccess(exp);
         exp.setActive(false);
         exp.setVersion(exp.getVersion() + 1);
         return toDto(experimentRepository.save(exp));
@@ -115,10 +163,44 @@ public class ExperimentService {
     public ExperimentDto rollback(Long experimentId) {
         Experiment exp = experimentRepository.findById(experimentId)
                 .orElseThrow(() -> new IllegalArgumentException("Experiment not found"));
+        enforceExperimentAccess(exp);
         // Rollback: reactivate and increment version to indicate reversion
         exp.setActive(true);
         exp.setVersion(exp.getVersion() + 1);
         return toDto(experimentRepository.save(exp));
+    }
+
+    /**
+     * Enforces that the current user has permission to mutate an experiment.
+     * ENTERPRISE_ADMIN: unrestricted.
+     * SITE_MANAGER: can only mutate experiments scoped to their own site.
+     */
+    private void enforceExperimentAccess(Experiment exp) {
+        UserPrincipal principal = getCurrentPrincipal();
+        Role role = Role.valueOf(principal.getRole());
+
+        if (role == Role.ENTERPRISE_ADMIN) {
+            return; // unrestricted
+        }
+
+        if (role == Role.SITE_MANAGER) {
+            Long expSiteId = exp.getSite() != null ? exp.getSite().getId() : null;
+            if (expSiteId == null || !expSiteId.equals(principal.getSiteId())) {
+                throw new AccessDeniedException(
+                        "Site managers can only modify experiments scoped to their own site");
+            }
+            return;
+        }
+
+        throw new AccessDeniedException("Insufficient permissions to modify experiments");
+    }
+
+    private UserPrincipal getCurrentPrincipal() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof UserPrincipal p) {
+            return p;
+        }
+        throw new AccessDeniedException("Authentication required");
     }
 
     /**
@@ -195,6 +277,7 @@ public class ExperimentService {
         dto.setType(exp.getType());
         dto.setVariantCount(exp.getVariantCount());
         dto.setDescription(exp.getDescription());
+        dto.setSiteId(exp.getSite() != null ? exp.getSite().getId() : null);
         dto.setActive(exp.isActive());
         dto.setVersion(exp.getVersion());
         return dto;

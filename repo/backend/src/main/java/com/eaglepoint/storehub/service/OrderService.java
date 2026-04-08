@@ -5,13 +5,16 @@ import com.eaglepoint.storehub.annotation.DataScope;
 import com.eaglepoint.storehub.aspect.DataScopeContext;
 import com.eaglepoint.storehub.dto.OrderRequest;
 import com.eaglepoint.storehub.dto.OrderResponse;
+import com.eaglepoint.storehub.entity.DeliveryDistanceBand;
 import com.eaglepoint.storehub.entity.DeliveryZone;
+import com.eaglepoint.storehub.entity.DeliveryZoneGroup;
 import com.eaglepoint.storehub.entity.Order;
 import com.eaglepoint.storehub.entity.Organization;
 import com.eaglepoint.storehub.entity.User;
 import com.eaglepoint.storehub.enums.FulfillmentMode;
 import com.eaglepoint.storehub.enums.OrderStatus;
 import com.eaglepoint.storehub.entity.PickupRedemptionLog;
+import com.eaglepoint.storehub.repository.DeliveryZoneGroupRepository;
 import com.eaglepoint.storehub.repository.DeliveryZoneRepository;
 import com.eaglepoint.storehub.repository.OrderRepository;
 import com.eaglepoint.storehub.repository.OrganizationRepository;
@@ -40,6 +43,8 @@ public class OrderService {
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
     private final DeliveryZoneRepository deliveryZoneRepository;
+    private final DeliveryZoneGroupRepository deliveryZoneGroupRepository;
+    private final DeliveryZoneGroupService deliveryZoneGroupService;
     private final PickupRedemptionLogRepository redemptionLogRepository;
     private final SiteAuthorizationService siteAuth;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -65,22 +70,34 @@ public class OrderService {
                 throw new IllegalArgumentException("Delivery ZIP code required for " + mode + " orders");
             }
 
-            DeliveryZone zone = deliveryZoneRepository
-                    .findBySiteIdAndZipCode(request.getSiteId(), request.getDeliveryZip())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Delivery not available to ZIP: " + request.getDeliveryZip()));
+            // Authoritative pricing: ZIP group + distance band (distance stored per ZIP)
+            var feeResult = deliveryZoneGroupService.resolveDeliveryFee(
+                    request.getSiteId(), request.getDeliveryZip());
 
-            if (!zone.isActive()) {
-                throw new IllegalArgumentException("Delivery zone is currently inactive");
-            }
-            if (zone.getDistanceMiles() > MAX_DELIVERY_MILES) {
-                throw new IllegalArgumentException("Delivery distance exceeds maximum range of 10 miles");
-            }
+            if (feeResult != null) {
+                deliveryFee = feeResult.fee();
+                distanceMiles = feeResult.distanceMiles();
+            } else {
+                // Legacy fallback (deprecated) — single-zone exact ZIP match
+                DeliveryZone legacyZone = deliveryZoneRepository
+                        .findBySiteIdAndZipCode(request.getSiteId(), request.getDeliveryZip())
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Delivery not available to ZIP: " + request.getDeliveryZip() +
+                                ". Configure a delivery zone group with this ZIP code."));
 
-            distanceMiles = zone.getDistanceMiles();
-            deliveryFee = zone.getDeliveryFee() != null
-                    ? zone.getDeliveryFee()
-                    : calculateDefaultFee(distanceMiles);
+                if (!legacyZone.isActive()) {
+                    throw new IllegalArgumentException("Delivery zone is currently inactive");
+                }
+                double distance = legacyZone.getDistanceMiles();
+                if (distance > MAX_DELIVERY_MILES) {
+                    throw new IllegalArgumentException("Delivery distance exceeds maximum range");
+                }
+                deliveryFee = legacyZone.getDeliveryFee() != null
+                        ? legacyZone.getDeliveryFee()
+                        : calculateDefaultFee(distance);
+                distanceMiles = distance;
+                log.warn("Using legacy delivery zone pricing for ZIP {} — migrate to zone groups", request.getDeliveryZip());
+            }
         }
 
         BigDecimal total = request.getSubtotal().add(deliveryFee);
@@ -112,6 +129,23 @@ public class OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
         siteAuth.requireSiteAccess(order.getSite().getId());
+
+        // Work-order scope: if order has assigned staff, only that staff (or managers) can update
+        if (order.getAssignedStaff() != null) {
+            org.springframework.security.core.Authentication auth =
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof com.eaglepoint.storehub.security.UserPrincipal p) {
+                String role = p.getRole();
+                if (!"ENTERPRISE_ADMIN".equals(role) && !"SITE_MANAGER".equals(role)) {
+                    // STAFF/TEAM_LEAD must be the assigned staff
+                    if (!order.getAssignedStaff().getId().equals(p.getId())) {
+                        throw new com.eaglepoint.storehub.config.AccessDeniedException(
+                                "Work-order scope: only the assigned staff can update this order");
+                    }
+                }
+            }
+        }
+
         order.setStatus(newStatus);
         log.info("Order status updated: orderId={}, newStatus={}", orderId, newStatus);
         return toResponse(orderRepository.save(order));
@@ -175,21 +209,31 @@ public class OrderService {
             throw new com.eaglepoint.storehub.config.AccessDeniedException("Access denied: site not in your data scope");
         }
         List<Order> orders = orderRepository.findBySiteIdOrderByCreatedAtDesc(siteId);
-        // Multi-dimensional scope enforcement
+
+        // Multi-dimensional scope enforcement: team
         Long teamId = DataScopeContext.getTeamId();
         if (teamId != null) {
-            // Staff with team assignment: see only orders assigned to them or unassigned at their site
             org.springframework.security.core.Authentication auth =
                     org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.getPrincipal() instanceof com.eaglepoint.storehub.security.UserPrincipal p) {
                 Long staffId = p.getId();
                 orders = orders.stream().filter(o ->
-                        o.getAssignedStaff() == null // unassigned orders visible to all site staff
-                        || o.getAssignedStaff().getId().equals(staffId) // assigned to this staff
-                        || o.getVerifiedBy() != null && o.getVerifiedBy().getId().equals(staffId) // verified by this staff
+                        o.getAssignedStaff() == null
+                        || o.getAssignedStaff().getId().equals(staffId)
+                        || o.getVerifiedBy() != null && o.getVerifiedBy().getId().equals(staffId)
                 ).toList();
             }
         }
+
+        // Work-order scope enforcement: when work-order context is set,
+        // only return the specific order matching the work-order ID
+        Long workOrderId = DataScopeContext.getWorkOrderId();
+        if (workOrderId != null) {
+            orders = orders.stream()
+                    .filter(o -> o.getId().equals(workOrderId))
+                    .toList();
+        }
+
         return orders.stream().map(o -> toResponse(o, false)).toList();
     }
 
@@ -200,18 +244,35 @@ public class OrderService {
         if (visibleSites != null && !visibleSites.contains(siteId)) {
             throw new com.eaglepoint.storehub.config.AccessDeniedException("Access denied: site not in your data scope");
         }
+
+        org.springframework.data.domain.Page<Order> page;
+
         // Multi-dimensional scope: team-scoped staff sees only assigned/unassigned orders
         Long teamId = DataScopeContext.getTeamId();
         if (teamId != null) {
             org.springframework.security.core.Authentication auth =
                     org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.getPrincipal() instanceof com.eaglepoint.storehub.security.UserPrincipal p) {
-                return orderRepository.findBySiteIdScopedToStaff(siteId, p.getId(), pageable)
-                        .map(o -> toResponse(o, false));
+                page = orderRepository.findBySiteIdScopedToStaff(siteId, p.getId(), pageable);
+            } else {
+                page = orderRepository.findBySiteIdOrderByCreatedAtDesc(siteId, pageable);
             }
+        } else {
+            page = orderRepository.findBySiteIdOrderByCreatedAtDesc(siteId, pageable);
         }
-        return orderRepository.findBySiteIdOrderByCreatedAtDesc(siteId, pageable)
-                .map(o -> toResponse(o, false));
+
+        // Work-order scope enforcement: when work-order context is set,
+        // only return the specific order matching the work-order ID
+        Long workOrderId = DataScopeContext.getWorkOrderId();
+        if (workOrderId != null) {
+            List<OrderResponse> filtered = page.getContent().stream()
+                    .filter(o -> o.getId().equals(workOrderId))
+                    .map(o -> toResponse(o, false))
+                    .toList();
+            return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+        }
+
+        return page.map(o -> toResponse(o, false));
     }
 
     @Transactional(readOnly = true)

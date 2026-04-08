@@ -29,6 +29,7 @@ public class SupportTicketController {
     private final EvidenceService evidenceService;
 
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<TicketResponse> createTicket(
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody TicketRequest request) {
@@ -36,6 +37,7 @@ public class SupportTicketController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<TicketResponse> getTicket(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -43,6 +45,7 @@ public class SupportTicketController {
     }
 
     @GetMapping("/my")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<TicketResponse>> getMyTickets(
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(ticketService.getMyTickets(principal.getId()));
@@ -71,6 +74,7 @@ public class SupportTicketController {
     }
 
     @PostMapping("/{id}/evidence")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<EvidenceDto> uploadEvidence(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal,
@@ -79,6 +83,7 @@ public class SupportTicketController {
     }
 
     @GetMapping("/{id}/evidence")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<EvidenceDto>> getEvidence(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {

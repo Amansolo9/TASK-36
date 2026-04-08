@@ -32,6 +32,7 @@ public class AnalyticsController {
     // ───── Event Logging ─────
 
     @PostMapping("/events")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> logEvent(
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody EventRequest request) {
@@ -71,11 +72,13 @@ public class AnalyticsController {
     }
 
     @GetMapping("/experiments")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<ExperimentDto>> getActiveExperiments() {
         return ResponseEntity.ok(experimentService.getActiveExperiments());
     }
 
     @GetMapping("/experiments/{name}/bucket")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> getBucket(
             @PathVariable String name,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -83,6 +86,7 @@ public class AnalyticsController {
     }
 
     @PostMapping("/experiments/{name}/outcome")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> recordOutcome(
             @PathVariable String name,
             @AuthenticationPrincipal UserPrincipal principal,

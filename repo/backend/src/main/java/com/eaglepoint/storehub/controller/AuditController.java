@@ -1,5 +1,6 @@
 package com.eaglepoint.storehub.controller;
 
+import com.eaglepoint.storehub.annotation.RequiresRecentAuth;
 import com.eaglepoint.storehub.dto.AuditLogDto;
 import com.eaglepoint.storehub.entity.AuditLog;
 import com.eaglepoint.storehub.entity.User;
@@ -31,6 +32,7 @@ public class AuditController {
 
     @GetMapping("/entity/{entityType}/{entityId}")
     @PreAuthorize("hasAnyRole('ENTERPRISE_ADMIN','SITE_MANAGER')")
+    @RequiresRecentAuth
     public ResponseEntity<List<AuditLogDto>> getAuditTrail(
             @PathVariable String entityType,
             @PathVariable Long entityId) {
@@ -42,6 +44,7 @@ public class AuditController {
 
     @GetMapping("/user/{userId}")
     @PreAuthorize("hasAnyRole('ENTERPRISE_ADMIN','SITE_MANAGER')")
+    @RequiresRecentAuth
     public ResponseEntity<List<AuditLogDto>> getAuditTrailByUser(@PathVariable Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -53,6 +56,7 @@ public class AuditController {
 
     @GetMapping("/range")
     @PreAuthorize("hasRole('ENTERPRISE_ADMIN')")
+    @RequiresRecentAuth
     public ResponseEntity<List<AuditLogDto>> getAuditTrailByDateRange(
             @RequestParam Instant start,
             @RequestParam Instant end) {

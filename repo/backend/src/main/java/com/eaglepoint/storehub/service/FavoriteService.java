@@ -23,6 +23,7 @@ public class FavoriteService {
     private final FavoriteRepository favoriteRepository;
     private final UserRepository userRepository;
     private final PostRepository postRepository;
+    private final SiteAuthorizationService siteAuth;
 
     @Audited(action = "TOGGLE_FAVORITE", entityType = "Favorite")
     @Transactional
@@ -39,6 +40,11 @@ public class FavoriteService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found"));
+
+        // Site isolation: user must have access to the post's site
+        if (post.getSite() != null) {
+            siteAuth.requireSiteAccess(post.getSite().getId());
+        }
 
         favoriteRepository.save(Favorite.builder().user(user).post(post).build());
         log.info("Favorite added: userId={}, postId={}", userId, postId);

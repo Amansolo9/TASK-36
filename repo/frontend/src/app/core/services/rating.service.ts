@@ -2,12 +2,24 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { RatingRequest, RatingResponse } from '../models/fulfillment.model';
+import { OfflineQueueService, OfflineActionResult, toOfflineResult } from './offline-queue.service';
 
 @Injectable({ providedIn: 'root' })
 export class RatingService {
   private readonly API = '/api/ratings';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private offlineQueue: OfflineQueueService) {}
+
+  async submitOffline(request: RatingRequest): Promise<OfflineActionResult> {
+    const result = await this.offlineQueue.enqueue({
+      url: '/api/ratings',
+      method: 'POST',
+      body: request,
+      idempotencyKey: `rating-submit-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      description: 'Submit rating for order #' + request.orderId
+    });
+    return toOfflineResult(result);
+  }
 
   submit(request: RatingRequest): Observable<RatingResponse> {
     return this.http.post<RatingResponse>(this.API, request);

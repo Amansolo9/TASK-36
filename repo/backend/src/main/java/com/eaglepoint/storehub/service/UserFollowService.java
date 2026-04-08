@@ -20,6 +20,10 @@ public class UserFollowService {
     private final UserFollowRepository userFollowRepository;
     private final UserRepository userRepository;
 
+    /**
+     * Follow another user. Cross-site follows are intentionally allowed for community engagement.
+     * The followed feed is still site-scoped at query time (posts filtered by viewer's site access).
+     */
     @Audited(action = "FOLLOW_USER", entityType = "UserFollow")
     @Transactional
     public void follow(Long followerId, Long followingId) {

@@ -74,8 +74,8 @@ public class CommunityService {
     public Page<PostResponse> getFeedByTopic(String topic, Long currentUserId, Pageable pageable) {
         List<Long> visibleSites = DataScopeContext.get();
         if (visibleSites != null && !visibleSites.isEmpty()) {
-            return postRepository.findBySiteIdAndTopicAndRemovedFalseOrderByCreatedAtDesc(
-                    visibleSites.get(0), topic, pageable)
+            return postRepository.findBySiteIdInAndTopicAndRemovedFalseOrderByCreatedAtDesc(
+                    visibleSites, topic, pageable)
                     .map(p -> toPostResponse(p, currentUserId));
         }
         return postRepository.findByTopicAndRemovedFalseOrderByCreatedAtDesc(topic, pageable)
@@ -102,6 +102,7 @@ public class CommunityService {
     public void removePost(Long postId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found"));
+        requirePostSiteAccess(post);
         post.setRemoved(true);
         log.info("Post removed: postId={}, authorId={}", postId, post.getAuthor().getId());
         postRepository.save(post);
@@ -116,6 +117,7 @@ public class CommunityService {
     public CommentResponse addComment(Long postId, Long authorId, CommentRequest request) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found"));
+        requirePostSiteAccess(post);
         User author = userRepository.findById(authorId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -134,6 +136,9 @@ public class CommunityService {
 
     @Transactional(readOnly = true)
     public List<CommentResponse> getComments(Long postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new IllegalArgumentException("Post not found"));
+        requirePostSiteAccess(post);
         return commentRepository.findByPostIdAndRemovedFalseOrderByCreatedAtAsc(postId).stream()
                 .map(this::toCommentResponse).toList();
     }
@@ -145,6 +150,7 @@ public class CommunityService {
     public PostResponse vote(Long postId, Long userId, VoteType type) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found"));
+        requirePostSiteAccess(post);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -259,6 +265,14 @@ public class CommunityService {
         }
         log.info("Quarantine reviewed: id={}, legitimate={}", quarantineId, legitimate);
         return qv;
+    }
+
+    // ───── Post-site access helper ─────
+
+    private void requirePostSiteAccess(Post post) {
+        Long postSiteId = post.getSite() != null ? post.getSite().getId() : null;
+        // Deny-by-default: null-site posts are admin-only (siteAuth denies null for non-admins)
+        siteAuth.requireSiteAccess(postSiteId);
     }
 
     // ───── Mappers ─────

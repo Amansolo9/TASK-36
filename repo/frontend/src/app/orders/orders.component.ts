@@ -97,7 +97,7 @@ import { Organization } from '../core/models/user.model';
               <p>Customer: #{{ order.customerId }} | Total: \${{ order.total }}</p>
               @if (order.fulfillmentMode === 'PICKUP' && !order.pickupVerified) {
                 <div class="verify-row">
-                  <input [(ngModel)]="verifyCode" placeholder="Verification code" maxlength="6">
+                  <input [(ngModel)]="rowVerifyCode[order.id]" placeholder="Verification code" maxlength="6">
                   <button (click)="staffVerifyPickup(order.id)">Verify Handoff</button>
                 </div>
               }
@@ -105,8 +105,8 @@ import { Organization } from '../core/models/user.model';
                 <p class="verified">Pickup Verified by #{{ order.verifiedById }}</p>
               }
               <div class="status-actions">
-                <select [(ngModel)]="selectedStatus">
-                  <option value="">— Update Status —</option>
+                <select [(ngModel)]="rowStatus[order.id]">
+                  <option value="">-- Update Status --</option>
                   <option value="CONFIRMED">Confirm</option>
                   <option value="PREPARING">Preparing</option>
                   <option value="READY_FOR_PICKUP">Ready for Pickup</option>
@@ -116,7 +116,7 @@ import { Organization } from '../core/models/user.model';
                   <option value="COURIER_PICKED_UP">Courier Picked Up</option>
                   <option value="COURIER_DELIVERED">Courier Delivered</option>
                 </select>
-                <button (click)="updateOrderStatus(order.id)" [disabled]="!selectedStatus">Update</button>
+                <button (click)="updateOrderStatus(order.id)" [disabled]="!rowStatus[order.id]">Update</button>
               </div>
             </div>
             <div class="order-footer">
@@ -203,9 +203,9 @@ export class OrdersComponent implements OnInit {
   orders = signal<OrderResponse[]>([]);
   siteOrders = signal<OrderResponse[]>([]);
   isStaff = signal(false);
-  selectedStatus: string = '';
+  rowStatus: Record<number, string> = {};
   loading = signal(false);
-  verifyCode = '';
+  rowVerifyCode: Record<number, string> = {};
 
   // Order creation fields
   newSiteId: number | null = null;
@@ -244,47 +244,56 @@ export class OrdersComponent implements OnInit {
     });
   }
 
-  createOrder(): void {
+  async createOrder(): Promise<void> {
     if (!this.newSiteId || !this.newSubtotal) return;
     this.createError.set('');
-    this.orderService.create({
-      siteId: this.newSiteId,
-      subtotal: this.newSubtotal,
-      fulfillmentMode: this.fulfillmentMode,
-      deliveryZip: this.fulfillmentMode === 'PICKUP' ? undefined : this.newDeliveryZip
-    }).subscribe({
-      next: () => { this.loadOrders(); this.newSubtotal = null; this.newDeliveryZip = ''; },
-      error: (err: any) => this.createError.set(err.error?.error || 'Order creation failed')
-    });
+    try {
+      const result = await this.orderService.createOffline({
+        siteId: this.newSiteId,
+        subtotal: this.newSubtotal,
+        fulfillmentMode: this.fulfillmentMode,
+        deliveryZip: this.fulfillmentMode === 'PICKUP' ? undefined : this.newDeliveryZip
+      });
+      if (result.outcome === 'synced') {
+        this.loadOrders();
+      }
+      this.newSubtotal = null;
+      this.newDeliveryZip = '';
+    } catch (err: any) {
+      this.createError.set(err.error?.error || 'Order creation failed');
+    }
   }
 
   verifyPickup(orderId: number): void {
-    this.orderService.verifyPickup(orderId, this.verifyCode).subscribe({
+    const code = this.rowVerifyCode[orderId] || '';
+    this.orderService.verifyPickup(orderId, code).subscribe({
       next: (updated) => {
         this.orders.update(orders =>
           orders.map(o => o.id === updated.id ? updated : o)
         );
-        this.verifyCode = '';
+        this.rowVerifyCode[orderId] = '';
       }
     });
   }
 
   staffVerifyPickup(orderId: number): void {
-    this.orderService.verifyPickup(orderId, this.verifyCode).subscribe({
+    const code = this.rowVerifyCode[orderId] || '';
+    this.orderService.verifyPickup(orderId, code).subscribe({
       next: (updated) => {
         this.siteOrders.update(orders => orders.map(o => o.id === updated.id ? updated : o));
-        this.verifyCode = '';
+        this.rowVerifyCode[orderId] = '';
       },
       error: (err: any) => this.createError.set(err.error?.error || 'Verification failed')
     });
   }
 
   updateOrderStatus(orderId: number): void {
-    if (!this.selectedStatus) return;
-    this.orderService.updateStatus(orderId, this.selectedStatus as any).subscribe({
+    const status = this.rowStatus[orderId];
+    if (!status) return;
+    this.orderService.updateStatus(orderId, status as any).subscribe({
       next: (updated) => {
         this.siteOrders.update(orders => orders.map(o => o.id === updated.id ? updated : o));
-        this.selectedStatus = '';
+        this.rowStatus[orderId] = '';
       },
       error: (err: any) => this.createError.set(err.error?.error || 'Status update failed')
     });

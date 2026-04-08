@@ -172,22 +172,27 @@ export class RatingsComponent implements OnInit {
     });
   }
 
-  submitRating(): void {
+  async submitRating(): Promise<void> {
     if (!this.newOrderId || !this.newRatedUserId) return;
     this.submitError.set('');
-    this.ratingService.submit({
-      orderId: this.newOrderId,
-      ratedUserId: this.newRatedUserId,
-      targetType: this.newTargetType,
-      stars: this.newStars,
-      timelinessScore: this.newTimeliness,
-      communicationScore: this.newCommunication,
-      accuracyScore: this.newAccuracy,
-      comment: this.newComment
-    }).subscribe({
-      next: (r) => { this.ratings.update(rs => [r, ...rs]); this.newComment = ''; },
-      error: (err: any) => this.submitError.set(err.error?.error || 'Rating failed')
-    });
+    try {
+      const result = await this.ratingService.submitOffline({
+        orderId: this.newOrderId,
+        ratedUserId: this.newRatedUserId,
+        targetType: this.newTargetType,
+        stars: this.newStars,
+        timelinessScore: this.newTimeliness,
+        communicationScore: this.newCommunication,
+        accuracyScore: this.newAccuracy,
+        comment: this.newComment
+      });
+      if (result.outcome === 'synced') {
+        this.ngOnInit();
+      }
+      this.newComment = '';
+    } catch (err: any) {
+      this.submitError.set(err.error?.error || 'Rating failed');
+    }
   }
 
   submitAppeal(ratingId: number): void {

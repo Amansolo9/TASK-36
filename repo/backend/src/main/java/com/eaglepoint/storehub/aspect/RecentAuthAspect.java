@@ -1,5 +1,6 @@
 package com.eaglepoint.storehub.aspect;
 
+import com.eaglepoint.storehub.config.RecentAuthRequiredException;
 import com.eaglepoint.storehub.security.UserPrincipal;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
@@ -28,8 +29,7 @@ public class RecentAuthAspect {
 
         Instant lastAuth = principal.getLastAuthenticatedAt();
         if (lastAuth == null || Instant.now().toEpochMilli() - lastAuth.toEpochMilli() > recentAuthWindowMs) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Recent authentication required. Please re-enter your password.");
+            throw new RecentAuthRequiredException();
         }
     }
 }

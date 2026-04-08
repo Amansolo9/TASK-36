@@ -29,6 +29,7 @@ public class OrderController {
     private final SiteAuthorizationService siteAuth;
 
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<OrderResponse> createOrder(
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody OrderRequest request) {
@@ -36,6 +37,7 @@ public class OrderController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<OrderResponse> getOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -43,6 +45,7 @@ public class OrderController {
     }
 
     @GetMapping("/my")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<OrderResponse>> getMyOrders(
             @AuthenticationPrincipal UserPrincipal principal,
             Pageable pageable) {

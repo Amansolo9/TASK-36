@@ -31,6 +31,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final IdempotencyFilter idempotencyFilter;
 
     @Value("${app.cors.allowed-origins:http://localhost:4200}")
     private String allowedOrigins;
@@ -50,6 +51,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/credit-score/{userId}").hasAnyRole("ENTERPRISE_ADMIN", "SITE_MANAGER")
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(idempotencyFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

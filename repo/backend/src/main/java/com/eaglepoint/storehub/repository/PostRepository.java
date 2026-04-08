@@ -27,4 +27,6 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Post> findBySiteIdInAndRemovedFalseOrderByCreatedAtDesc(List<Long> siteIds, Pageable pageable);
 
     List<Post> findByAuthorIdInAndSiteIdInAndRemovedFalseOrderByCreatedAtDesc(List<Long> authorIds, List<Long> siteIds);
+
+    Page<Post> findBySiteIdInAndTopicAndRemovedFalseOrderByCreatedAtDesc(List<Long> siteIds, String topic, Pageable pageable);
 }

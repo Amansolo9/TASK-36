@@ -20,6 +20,7 @@ public class ExperimentDto {
     private int variantCount;
 
     private String description;
+    private Long siteId;
     private boolean active;
     private int version;
 }

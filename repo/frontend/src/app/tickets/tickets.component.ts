@@ -158,22 +158,24 @@ export class TicketsComponent implements OnInit {
     });
   }
 
-  createTicket(): void {
+  async createTicket(): Promise<void> {
     if (!this.newOrderId || !this.newDescription) return;
     this.error.set('');
 
-    this.ticketService.create({
-      orderId: this.newOrderId,
-      type: this.newType,
-      description: this.newDescription
-    }).subscribe({
-      next: (ticket) => {
-        this.tickets.update(t => [ticket, ...t]);
-        this.newOrderId = null;
-        this.newDescription = '';
-      },
-      error: (err) => this.error.set(err.error?.error || 'Failed to create ticket')
-    });
+    try {
+      const result = await this.ticketService.createOffline({
+        orderId: this.newOrderId,
+        type: this.newType,
+        description: this.newDescription
+      });
+      if (result.outcome === 'synced') {
+        this.loadTickets();
+      }
+      this.newOrderId = null;
+      this.newDescription = '';
+    } catch (err: any) {
+      this.error.set(err.error?.error || 'Failed to create ticket');
+    }
   }
 
   onFileSelected(event: Event, ticketId: number): void {

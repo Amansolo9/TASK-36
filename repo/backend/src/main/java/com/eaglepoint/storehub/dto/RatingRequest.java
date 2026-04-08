@@ -20,13 +20,13 @@ public class RatingRequest {
     @NotNull @Min(1) @Max(5)
     private Integer stars;
 
-    @Min(1) @Max(5)
+    @NotNull @Min(1) @Max(5)
     private Integer timelinessScore;
 
-    @Min(1) @Max(5)
+    @NotNull @Min(1) @Max(5)
     private Integer communicationScore;
 
-    @Min(1) @Max(5)
+    @NotNull @Min(1) @Max(5)
     private Integer accuracyScore;
 
     private String comment;

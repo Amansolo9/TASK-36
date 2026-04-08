@@ -61,7 +61,14 @@ import { PostResponse } from '../core/models/community.model';
               </div>
               <p class="post-body">{{ post.body }}</p>
               <div class="post-meta">
-                <span>by {{ post.authorName }}</span>
+                <span class="author-info">
+                  by {{ post.authorName }}
+                  <button class="btn-follow"
+                          [class.following]="isFollowing(post.authorId)"
+                          (click)="toggleFollowAuthor(post.authorId)">
+                    {{ isFollowing(post.authorId) ? 'Following' : 'Follow' }}
+                  </button>
+                </span>
                 <span>{{ post.createdAt | date:'short' }}</span>
                 <span>{{ post.commentCount }} comments</span>
                 <button class="btn-fav" [class.fav-active]="isFavorited(post.id)" (click)="toggleFavorite(post.id)">
@@ -163,12 +170,21 @@ import { PostResponse } from '../core/models/community.model';
     .empty { text-align: center; color: #888; }
     .btn-fav { background: none; border: none; cursor: pointer; font-size: 1.2rem; color: #ccc; padding: 0; }
     .btn-fav.fav-active { color: #e53935; }
+    .author-info { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .btn-follow {
+      font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 12px;
+      border: 1px solid #1976d2; color: #1976d2; background: white;
+      cursor: pointer; transition: all 0.15s ease;
+    }
+    .btn-follow:hover { background: #e3f2fd; }
+    .btn-follow.following { background: #1976d2; color: white; border-color: #1976d2; }
   `]
 })
 export class CommunityFeedComponent implements OnInit {
   posts = signal<PostResponse[]>([]);
   comments = signal<{ id: number; postId: number; authorId: number; authorName: string; body: string; createdAt: string }[]>([]);
   followedTopics = signal<string[]>([]);
+  followedAuthors = signal<Set<number>>(new Set());
   expandedPost = signal<number | null>(null);
   activeTopic = signal<string | null>(null);
   favoritedPosts = signal<Set<number>>(new Set());
@@ -185,6 +201,7 @@ export class CommunityFeedComponent implements OnInit {
     this.loadFeed();
     this.api.getFollowedTopics().subscribe(t => this.followedTopics.set(t));
     this.api.getMyFavorites().subscribe(ids => this.favoritedPosts.set(new Set(ids)));
+    this.api.getFollowingAuthors().subscribe(ids => this.followedAuthors.set(new Set(ids)));
   }
 
   loadFeed(): void {
@@ -196,21 +213,21 @@ export class CommunityFeedComponent implements OnInit {
     }
   }
 
-  createPost(): void {
-    this.api.createPost({ title: this.newTitle, body: this.newBody, topic: this.newTopic || undefined }).subscribe({
-      next: (post) => {
-        this.posts.update(posts => [post, ...posts]);
-        this.newTitle = '';
-        this.newBody = '';
-        this.newTopic = '';
-      }
-    });
+  async createPost(): Promise<void> {
+    const result = await this.api.createPostOffline({ title: this.newTitle, body: this.newBody, topic: this.newTopic || undefined });
+    if (result.outcome === 'synced') {
+      this.loadFeed();
+    }
+    this.newTitle = '';
+    this.newBody = '';
+    this.newTopic = '';
   }
 
-  vote(postId: number, type: 'UPVOTE' | 'DOWNVOTE'): void {
-    this.api.vote(postId, type).subscribe(updated => {
-      this.posts.update(posts => posts.map(p => p.id === updated.id ? updated : p));
-    });
+  async vote(postId: number, type: 'UPVOTE' | 'DOWNVOTE'): Promise<void> {
+    const result = await this.api.voteOffline(postId, type);
+    if (result.outcome === 'synced') {
+      this.loadFeed();
+    }
   }
 
   toggleComments(postId: number): void {
@@ -222,14 +239,15 @@ export class CommunityFeedComponent implements OnInit {
     this.api.getComments(postId).subscribe(c => this.comments.set(c));
   }
 
-  addComment(postId: number): void {
-    this.api.addComment(postId, this.newComment).subscribe(c => {
-      this.comments.update(comments => [...comments, c]);
-      this.newComment = '';
+  async addComment(postId: number): Promise<void> {
+    const result = await this.api.addCommentOffline(postId, this.newComment);
+    if (result.outcome === 'synced') {
+      this.api.getComments(postId).subscribe(c => this.comments.set(c));
       this.posts.update(posts => posts.map(p =>
         p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p
       ));
-    });
+    }
+    this.newComment = '';
   }
 
   filterByTopic(topic: string): void {
@@ -269,5 +287,29 @@ export class CommunityFeedComponent implements OnInit {
 
   isFavorited(postId: number): boolean {
     return this.favoritedPosts().has(postId);
+  }
+
+  isFollowing(authorId: number): boolean {
+    return this.followedAuthors().has(authorId);
+  }
+
+  toggleFollowAuthor(authorId: number): void {
+    if (this.isFollowing(authorId)) {
+      this.api.unfollowAuthor(authorId).subscribe(() => {
+        this.followedAuthors.update(set => {
+          const next = new Set(set);
+          next.delete(authorId);
+          return next;
+        });
+      });
+    } else {
+      this.api.followAuthor(authorId).subscribe(() => {
+        this.followedAuthors.update(set => {
+          const next = new Set(set);
+          next.add(authorId);
+          return next;
+        });
+      });
+    }
   }
 }

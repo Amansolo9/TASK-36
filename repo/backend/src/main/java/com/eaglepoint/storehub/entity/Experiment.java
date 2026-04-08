@@ -30,6 +30,14 @@ public class Experiment {
 
     private String description;
 
+    /**
+     * Site scope for experiment tenancy. NULL means global (enterprise-level).
+     * SITE_MANAGER can only mutate experiments with their own site_id.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "site_id")
+    private Organization site;
+
     @Column(nullable = false)
     @Builder.Default
     private int version = 1;

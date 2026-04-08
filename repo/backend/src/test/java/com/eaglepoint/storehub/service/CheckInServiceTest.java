@@ -177,7 +177,9 @@ class CheckInServiceTest {
     }
 
     @Test
-    void checkIn_excessiveAttempts_returnsFlagged() {
+    void checkIn_fiveAttemptsTotal_doesNotTriggerAnomaly() {
+        // 5 total attempts (4 previous + 1 current) should NOT trigger anomaly
+        // because the spec requires "more than 5 in 10 minutes"
         Instant scheduled = Instant.now();
         CheckInRequest request = createRequest(scheduled, null);
 
@@ -185,7 +187,36 @@ class CheckInServiceTest {
         when(organizationRepository.findById(1L)).thenReturn(Optional.of(testSite));
         when(shiftAssignmentRepository.findActiveShift(eq(1L), eq(1L), any(LocalDate.class)))
                 .thenReturn(Optional.of(buildShift(LocalTime.now())));
-        // Return 5 (which meets the >= 5 threshold)
+        // 4 previous attempts + 1 current = 5 total → does NOT exceed 5
+        when(checkInRepository.countByUserIdSince(eq(1L), any(Instant.class))).thenReturn(4L);
+        when(checkInRepository.countValidCheckInsSince(eq(1L), eq(1L), any(Instant.class))).thenReturn(0L);
+        when(deviceBindingRepository.findByUserIdAndActiveTrue(1L)).thenReturn(Collections.emptyList());
+        when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> {
+            CheckIn c = invocation.getArgument(0);
+            c.setId(104L);
+            return c;
+        });
+
+        CheckInResponse response = checkInService.checkIn(1L, request);
+
+        // Should proceed normally (VALID), not flagged for excessive attempts
+        assertEquals(CheckInStatus.VALID, response.getStatus());
+        assertFalse(response.isFlaggedForReview());
+        verify(fraudAlertRepository, never()).save(argThat(alert ->
+                "EXCESSIVE_CHECKIN_ATTEMPTS".equals(alert.getReason())));
+    }
+
+    @Test
+    void checkIn_sixthAttempt_triggersAnomaly() {
+        // 6 total attempts (5 previous + 1 current) EXCEEDS 5 → should trigger anomaly
+        Instant scheduled = Instant.now();
+        CheckInRequest request = createRequest(scheduled, null);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(testUser));
+        when(organizationRepository.findById(1L)).thenReturn(Optional.of(testSite));
+        when(shiftAssignmentRepository.findActiveShift(eq(1L), eq(1L), any(LocalDate.class)))
+                .thenReturn(Optional.of(buildShift(LocalTime.now())));
+        // 5 previous attempts + 1 current = 6 total → exceeds 5
         when(checkInRepository.countByUserIdSince(eq(1L), any(Instant.class))).thenReturn(5L);
         when(fraudAlertRepository.save(any(FraudAlert.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> {
@@ -199,8 +230,9 @@ class CheckInServiceTest {
         assertEquals(CheckInStatus.FLAGGED, response.getStatus());
         assertTrue(response.getMessage().contains("flagged"));
         assertTrue(response.isFlaggedForReview());
-        verify(fraudAlertRepository).save(any(FraudAlert.class));
-        // Flagged check-in IS now persisted for supervisor review
+        verify(fraudAlertRepository).save(argThat(alert ->
+                "EXCESSIVE_CHECKIN_ATTEMPTS".equals(alert.getReason())));
+        // Flagged check-in IS persisted for supervisor review
         verify(checkInRepository).save(any(CheckIn.class));
     }
 

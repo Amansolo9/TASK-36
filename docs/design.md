@@ -151,6 +151,12 @@ Flagged records are saved with raw evidence. Resolution requires a supervisor no
 
 **Address Book**: Users manage saved addresses via `/api/addresses` (CRUD). Addresses support a `label`, `isDefault` flag, and encrypted street/city/state/zip fields.
 
+**Delivery Zone Groups**: In addition to individual delivery zones, administrators can organize zones into **groups** via `/api/delivery-zone-groups`. Each group belongs to a site and contains:
+- **ZIP codes**: Each with an associated distance in miles.
+- **Distance bands**: Fee tiers defined by `minMiles`, `maxMiles`, and `fee`.
+
+When calculating delivery fees, the `DeliveryZoneGroupService` is tried first (group-based resolution); if no matching group/band is found, the system falls back to legacy single-zone ZIP matching.
+
 ### 5.3 Community & Engagement
 
 **Posts & Comments**: Users create posts with title, body, and optional topic. Posts are scoped to the author's site. Comments are ordered chronologically.
@@ -204,7 +210,7 @@ Point values are configurable via the admin incentive-rules console.
 **Appeal Workflow**:
 1. Rated user may appeal within **7 days** of rating creation.
 2. Appeal enters `PENDING` status, then `IN_ARBITRATION` when a manager reviews.
-3. Resolution: `UPHELD` (rating stands) or `OVERTURNED` (rating reversed).
+3. Resolution: `UPHELD` (rating stands) or `OVERTURNED` (rating reversed). Appeals past the 7-day window are marked `EXPIRED`.
 4. Arbitration reviewer, timestamps, and notes are recorded.
 
 **Credit Score Impact**:
@@ -245,6 +251,7 @@ Point values are configurable via the admin incentive-rules console.
 
 **A/B & Bandit Experiments**:
 - Types: `AB_TEST` (fixed split) and `BANDIT` (adaptive allocation).
+- **Site-scoping**: Experiments can be scoped to a specific site (`siteId` field) or run globally (null `siteId`). `SITE_MANAGER` can only create experiments for their own site; `ENTERPRISE_ADMIN` can scope globally or to any site.
 - Deterministic bucketing by `hash(userId + experimentName) % variantCount`.
 - Version tracking: experiments track a `version` field incremented on updates.
 - Feature backtracking: `POST /api/analytics/experiments/{id}/rollback` deactivates and rolls back.
@@ -260,17 +267,44 @@ Every write action is captured via the `@Audited` annotation processed by `Audit
 - `deviceFingerprint` and `ipAddress` (encrypted)
 - `createdAt` (immutable; the `audit_log` table is insert-only with `updatable = false`)
 
-Audit logs are queryable by entity, user, or date range (admin/manager restricted).
+Audit logs are queryable by entity, user, or date range (admin/manager restricted). All audit query endpoints require `@RequiresRecentAuth`. Entity-level queries enforce site scope — the aspect validates that the requesting user has access to the entity's site. For unknown entity types, only `ENTERPRISE_ADMIN` may query.
 
-### 6.2 Rate Limiting
+### 6.2 Rate Limiting & Idempotency
 
-A `RateLimitFilter` in the Spring Security filter chain protects API endpoints from excessive requests.
+The Spring Security filter chain includes two protective filters before JWT authentication:
+- **IdempotencyFilter**: Deduplicates requests to prevent accidental double-submission.
+- **RateLimitFilter**: Protects API endpoints from excessive requests.
 
 ### 6.3 Multi-Tenancy / Data Scoping
 
-The `@DataScope` annotation and `DataScopeAspect` set a thread-local `DataScopeContext` with the authenticated user's visible site list. Services and repositories use this context to filter queries, ensuring users only see data within their organizational scope.
+The `@DataScope` annotation and `DataScopeAspect` provide **multi-dimensional** data-scope filtering based on the authenticated user's context. Three scope dimensions are supported:
 
-### 6.4 Token Revocation
+1. **Site scope** (always enforced): `ENTERPRISE_ADMIN` sees all sites; `SITE_MANAGER`/`TEAM_LEAD` see their site and organizational children; `STAFF`/`CUSTOMER` see their own site only.
+2. **Device scope** (opt-in via `requireDevice = true`): Requires the `X-Device-Fingerprint` header. Operations without device context are denied.
+3. **Work-order scope** (opt-in via `requireWorkOrder = true`): Requires the `X-Work-Order-Id` header or `workOrderId` query parameter. Operations without work-order context are denied.
+
+The aspect populates a thread-local `DataScopeContext` with `visibleSiteIds`, `teamId`, `deviceHash`, and `workOrderId`. When a required dimension is absent, the aspect **denies by default** with an `AccessDeniedException`. Management roles (`ENTERPRISE_ADMIN`, `SITE_MANAGER`) are exempt from device and work-order enforcement — they perform supervisory queries that should not be gated on those dimensions.
+
+### 6.4 Error Handling
+
+A `GlobalExceptionHandler` (`@RestControllerAdvice`) maps exceptions to structured JSON error responses:
+
+| Exception | HTTP Status | Extra Fields |
+|-----------|-------------|--------------|
+| `MethodArgumentNotValidException` | `400` | `details` (field-level errors) |
+| `IllegalArgumentException` | `400` | — |
+| `BadCredentialsException` | `401` | — |
+| `AccessDeniedException` | `403` | — |
+| `RecentAuthRequiredException` | `403` | `code: "RECENT_AUTH_REQUIRED"` |
+| `NotFoundException` | `404` | — |
+| `ConflictException` | `409` | — |
+| `BusinessRuleException` | `422` | — |
+| `ResponseStatusException` | (from exception) | — |
+| Generic `Exception` | `500` | `traceId` (8-char UUID prefix for log correlation) |
+
+All error responses share a common shape: `{ timestamp, status, error }`.
+
+### 6.5 Token Revocation
 
 Each user has a `tokenVersion` field. Incrementing it invalidates all previously issued JWTs. The `JwtAuthenticationFilter` compares the token's `tokenVersion` claim against the stored value.
 
@@ -294,7 +328,10 @@ The database schema is managed by **27 Flyway migrations** (V1–V27). Key table
 | `incentive_rules` | Configurable point values per action |
 | `support_tickets` | After-sales tickets with SLA and retention |
 | `evidence_files` | Ticket attachments with SHA-256 hash |
-| `delivery_zones` | ZIP/distance-based delivery fee configuration |
+| `delivery_zones` | ZIP/distance-based delivery fee configuration (legacy) |
+| `delivery_zone_groups` | Hierarchical zone groups per site |
+| `delivery_zone_zips` | ZIP codes within a zone group |
+| `delivery_distance_bands` | Distance-based fee tiers within a zone group |
 | `addresses` | User address book (encrypted) |
 | `credit_scores` | Trust scores (encrypted) with impact breakdown |
 | `device_bindings` | Device-to-user binding (encrypted hash) |

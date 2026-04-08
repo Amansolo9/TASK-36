@@ -130,6 +130,7 @@ Create a new organization node.
 
 ### GET /api/organizations
 List all organizations.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER`, `TEAM_LEAD`, `STAFF`
 
 **Response**: `List<OrganizationDto>`
 
@@ -336,16 +337,13 @@ Submit a rating for a completed order.
 List all ratings for a user.
 
 ### GET /api/ratings/user/{userId}/average
-Get average rating scores for a user.
+Get average star rating for a user.
 
 **Response**:
 ```json
 {
-  "averageStars": 4.2,
-  "averageTimeliness": 4.5,
-  "averageCommunication": 4.0,
-  "averageAccuracy": 4.1,
-  "totalRatings": 15
+  "userId": 1,
+  "averageStars": 4.2
 }
 ```
 
@@ -483,6 +481,7 @@ Toggle favorite on a post.
 **Response**:
 ```json
 {
+  "postId": 1,
   "favorited": true
 }
 ```
@@ -513,6 +512,15 @@ Review a quarantined vote.
 
 **Query Parameters**:
 - `legitimate` — `true` (reverse penalties) or `false` (confirm fraud)
+
+**Response**:
+```json
+{
+  "id": 1,
+  "reviewed": true,
+  "legitimate": true
+}
+```
 
 ---
 
@@ -611,9 +619,8 @@ Verify evidence file integrity (re-compute SHA-256 and compare).
 **Response**:
 ```json
 {
-  "verified": true,
-  "storedHash": "a1b2c3...",
-  "computedHash": "a1b2c3..."
+  "evidenceId": 1,
+  "integrityVerified": true
 }
 ```
 
@@ -700,6 +707,7 @@ Create a new experiment.
   "type": "AB_TEST | BANDIT",
   "variantCount": 2,
   "description": "string (optional)",
+  "siteId": 1,
   "active": true
 }
 ```
@@ -744,7 +752,7 @@ Roll back an experiment (deactivate + version decrement).
 
 ### GET /api/audit/entity/{entityType}/{entityId}
 Get audit logs for a specific entity.
-**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER`
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
 
 **Response** (`List<AuditLogDto>`):
 ```json
@@ -767,11 +775,11 @@ Get audit logs for a specific entity.
 
 ### GET /api/audit/user/{userId}
 Get audit logs for a specific user's actions.
-**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER`
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
 
 ### GET /api/audit/range
 Get audit logs within a date range.
-**Auth**: `ENTERPRISE_ADMIN`
+**Auth**: `ENTERPRISE_ADMIN` | **Requires Recent Auth**
 
 **Query Parameters**:
 - `start` — ISO 8601 Instant
@@ -898,6 +906,65 @@ Delete a delivery zone.
 
 ---
 
+## 15. Admin: Delivery Zone Groups
+
+### GET /api/delivery-zone-groups/site/{siteId}
+List delivery zone groups for a site.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER`
+
+**Response**: `List<DeliveryZoneGroup>`
+
+### POST /api/delivery-zone-groups
+Create a delivery zone group.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
+
+**Query Parameters**:
+- `siteId` — Site organization ID
+- `name` — Group name
+
+**Response**: `DeliveryZoneGroup`
+
+### POST /api/delivery-zone-groups/{groupId}/zips
+Add a ZIP code to a zone group.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
+
+**Query Parameters**:
+- `zipCode` — ZIP code string
+- `distanceMiles` — Distance in miles (double)
+
+**Response**: `DeliveryZoneGroup`
+
+### DELETE /api/delivery-zone-groups/{groupId}/zips/{zipCode}
+Remove a ZIP code from a zone group.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
+
+**Response**: `DeliveryZoneGroup`
+
+### POST /api/delivery-zone-groups/{groupId}/bands
+Add a distance-based fee band to a zone group.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
+
+**Query Parameters**:
+- `minMiles` — Minimum distance (double)
+- `maxMiles` — Maximum distance (double)
+- `fee` — Delivery fee (BigDecimal)
+
+**Response**: `DeliveryZoneGroup`
+
+### DELETE /api/delivery-zone-groups/{groupId}/bands/{bandId}
+Remove a distance band from a zone group.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
+
+**Response**: `DeliveryZoneGroup`
+
+### PATCH /api/delivery-zone-groups/{groupId}/deactivate
+Deactivate a delivery zone group.
+**Auth**: `ENTERPRISE_ADMIN`, `SITE_MANAGER` | **Requires Recent Auth**
+
+**Response**: `DeliveryZoneGroup`
+
+---
+
 ## Common Response Codes
 
 | Code | Meaning |
@@ -909,6 +976,7 @@ Delete a delivery zone.
 | `403` | Forbidden (role or recent-auth check) |
 | `404` | Resource not found |
 | `409` | Conflict (duplicate) |
+| `422` | Business rule violation |
 | `423` | Account locked |
 
 ## Authentication Notes

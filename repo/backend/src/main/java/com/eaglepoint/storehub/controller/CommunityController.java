@@ -30,10 +30,13 @@ public class CommunityController {
     private final GamificationService gamificationService;
     private final FavoriteService favoriteService;
     private final UserFollowService userFollowService;
+    private final com.eaglepoint.storehub.repository.UserRepository userRepository;
+    private final com.eaglepoint.storehub.service.SiteAuthorizationService siteAuth;
 
     // ───── Posts ─────
 
     @PostMapping("/posts")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<PostResponse> createPost(
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody PostRequest request) {
@@ -41,6 +44,7 @@ public class CommunityController {
     }
 
     @GetMapping("/posts")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<PostResponse>> getFeed(
             @AuthenticationPrincipal UserPrincipal principal,
             Pageable pageable) {
@@ -48,6 +52,7 @@ public class CommunityController {
     }
 
     @GetMapping("/posts/topic/{topic}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<PostResponse>> getByTopic(
             @PathVariable String topic,
             @AuthenticationPrincipal UserPrincipal principal,
@@ -56,6 +61,7 @@ public class CommunityController {
     }
 
     @GetMapping("/posts/following")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<PostResponse>> getFollowedFeed(
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(communityService.getFollowedFeed(principal.getId()));
@@ -72,6 +78,7 @@ public class CommunityController {
     // ───── Comments ─────
 
     @PostMapping("/posts/{postId}/comments")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<CommentResponse> addComment(
             @PathVariable Long postId,
             @AuthenticationPrincipal UserPrincipal principal,
@@ -80,6 +87,7 @@ public class CommunityController {
     }
 
     @GetMapping("/posts/{postId}/comments")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<CommentResponse>> getComments(@PathVariable Long postId) {
         return ResponseEntity.ok(communityService.getComments(postId));
     }
@@ -87,6 +95,7 @@ public class CommunityController {
     // ───── Votes ─────
 
     @PostMapping("/posts/{postId}/vote")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<PostResponse> vote(
             @PathVariable Long postId,
             @AuthenticationPrincipal UserPrincipal principal,
@@ -97,6 +106,7 @@ public class CommunityController {
     // ───── Topics ─────
 
     @PostMapping("/topics/{topic}/follow")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> followTopic(
             @PathVariable String topic,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -105,6 +115,7 @@ public class CommunityController {
     }
 
     @DeleteMapping("/topics/{topic}/follow")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> unfollowTopic(
             @PathVariable String topic,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -113,6 +124,7 @@ public class CommunityController {
     }
 
     @GetMapping("/topics/following")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<String>> getFollowedTopics(
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(communityService.getFollowedTopics(principal.getId()));
@@ -121,19 +133,31 @@ public class CommunityController {
     // ───── Points / Gamification ─────
 
     @GetMapping("/points/me")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<PointsProfile> getMyPoints(
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(gamificationService.getProfile(principal.getId()));
     }
 
     @GetMapping("/points/{userId}")
-    public ResponseEntity<PointsProfile> getUserPoints(@PathVariable Long userId) {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<PointsProfile> getUserPoints(
+            @PathVariable Long userId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        if (!userId.equals(principal.getId())) {
+            // Non-self: resolve target user's site and enforce scope
+            var targetUser = userRepository.findById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            Long targetSiteId = targetUser.getSite() != null ? targetUser.getSite().getId() : null;
+            siteAuth.requireOwnerOrSiteAccess(userId, targetSiteId);
+        }
         return ResponseEntity.ok(gamificationService.getProfile(userId));
     }
 
     // ───── Favorites ─────
 
     @PostMapping("/posts/{postId}/favorite")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> toggleFavorite(
             @PathVariable Long postId,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -142,6 +166,7 @@ public class CommunityController {
     }
 
     @GetMapping("/favorites")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<Long>> getMyFavorites(
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(favoriteService.getFavorites(principal.getId()));
@@ -150,6 +175,7 @@ public class CommunityController {
     // ───── User Following ─────
 
     @PostMapping("/users/{userId}/follow")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> followUser(
             @PathVariable Long userId,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -158,6 +184,7 @@ public class CommunityController {
     }
 
     @DeleteMapping("/users/{userId}/follow")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> unfollowUser(
             @PathVariable Long userId,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -166,6 +193,7 @@ public class CommunityController {
     }
 
     @GetMapping("/following")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<Long>> getFollowing(
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(userFollowService.getFollowing(principal.getId()));

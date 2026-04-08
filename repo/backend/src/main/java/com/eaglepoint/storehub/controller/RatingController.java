@@ -24,6 +24,7 @@ public class RatingController {
     private final RatingService ratingService;
 
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<RatingResponse> submitRating(
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody RatingRequest request) {
@@ -31,17 +32,20 @@ public class RatingController {
     }
 
     @GetMapping("/user/{userId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<RatingResponse>> getUserRatings(@PathVariable Long userId) {
         return ResponseEntity.ok(ratingService.getRatingsForUser(userId));
     }
 
     @GetMapping("/user/{userId}/average")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> getAverageRating(@PathVariable Long userId) {
         Double avg = ratingService.getAverageRating(userId);
         return ResponseEntity.ok(Map.of("userId", userId, "averageStars", avg != null ? avg : 0.0));
     }
 
     @PostMapping("/{id}/appeal")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<RatingResponse> submitAppeal(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal,

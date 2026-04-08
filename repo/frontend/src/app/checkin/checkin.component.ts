@@ -107,27 +107,29 @@ export class CheckInComponent implements OnInit {
     });
   }
 
-  doCheckIn(): void {
+  async doCheckIn(): Promise<void> {
     if (!this.selectedSiteId) return;
     this.loading.set(true);
     this.error.set('');
     this.lastResult.set(null);
 
-    this.checkInService.checkIn({
-      siteId: this.selectedSiteId,
-      scheduledTime: new Date().toISOString(),
-      deviceFingerprint: this.getDeviceFingerprint(),
-      locationDescription: this.locationDesc || undefined
-    }).subscribe({
-      next: (res) => {
-        this.lastResult.set(res);
-        this.loading.set(false);
-      },
-      error: (err) => {
-        this.error.set(err.error?.error || 'Check-in failed');
-        this.loading.set(false);
+    try {
+      const { result, response } = await this.checkInService.checkInOffline({
+        siteId: this.selectedSiteId,
+        scheduledTime: new Date().toISOString(),
+        deviceFingerprint: this.getDeviceFingerprint(),
+        locationDescription: this.locationDesc || undefined
+      });
+      if (result.outcome === 'synced' && response) {
+        this.lastResult.set(response);
+      } else if (result.outcome === 'queued') {
+        this.error.set('Check-in queued - will sync when online');
       }
-    });
+      this.loading.set(false);
+    } catch (err: any) {
+      this.error.set(err.error?.error || 'Check-in failed');
+      this.loading.set(false);
+    }
   }
 
   private getDeviceFingerprint(): string {

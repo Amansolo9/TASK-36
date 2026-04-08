@@ -2,12 +2,46 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { PostRequest, PostResponse, CommentResponse, PointsProfile, PageResponse } from '../models/community.model';
+import { OfflineQueueService, OfflineActionResult, toOfflineResult } from './offline-queue.service';
 
 @Injectable({ providedIn: 'root' })
 export class CommunityApiService {
   private readonly API = '/api/community';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private offlineQueue: OfflineQueueService) {}
+
+  async createPostOffline(request: PostRequest): Promise<OfflineActionResult> {
+    const result = await this.offlineQueue.enqueue({
+      url: '/api/community/posts',
+      method: 'POST',
+      body: request,
+      idempotencyKey: `community-post-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      description: 'Create community post: ' + request.title
+    });
+    return toOfflineResult(result);
+  }
+
+  async voteOffline(postId: number, type: 'UPVOTE' | 'DOWNVOTE'): Promise<OfflineActionResult> {
+    const result = await this.offlineQueue.enqueue({
+      url: `/api/community/posts/${postId}/vote?type=${type}`,
+      method: 'POST',
+      body: null,
+      idempotencyKey: `vote-${postId}-${type}-${Date.now()}`,
+      description: `Vote ${type} on post #${postId}`
+    });
+    return toOfflineResult(result);
+  }
+
+  async addCommentOffline(postId: number, body: string): Promise<OfflineActionResult> {
+    const result = await this.offlineQueue.enqueue({
+      url: `/api/community/posts/${postId}/comments`,
+      method: 'POST',
+      body: { body },
+      idempotencyKey: `community-comment-${postId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      description: `Comment on post #${postId}`
+    });
+    return toOfflineResult(result);
+  }
 
   // Posts
   createPost(request: PostRequest): Observable<PostResponse> {
@@ -75,5 +109,18 @@ export class CommunityApiService {
 
   toggleFavorite(postId: number): Observable<{postId: number; favorited: boolean}> {
     return this.http.post<{postId: number; favorited: boolean}>(`${this.API}/posts/${postId}/favorite`, null);
+  }
+
+  // Author Following
+  followAuthor(userId: number): Observable<void> {
+    return this.http.post<void>(`${this.API}/users/${userId}/follow`, null);
+  }
+
+  unfollowAuthor(userId: number): Observable<void> {
+    return this.http.delete<void>(`${this.API}/users/${userId}/follow`);
+  }
+
+  getFollowingAuthors(): Observable<number[]> {
+    return this.http.get<number[]>(`${this.API}/following`);
   }
 }

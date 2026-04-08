@@ -27,6 +27,7 @@ public class OrganizationController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ENTERPRISE_ADMIN','SITE_MANAGER','TEAM_LEAD','STAFF')")
     public ResponseEntity<List<OrganizationDto>> findAll() {
         return ResponseEntity.ok(organizationService.findAll());
     }

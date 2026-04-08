@@ -6,16 +6,18 @@ export interface CheckInRequest {
 }
 
 export interface CheckInResponse {
-  id: number;
+  id: number | null;
   userId: number;
   siteId: number;
   timestamp: string;
   scheduledTime: string;
+  /** VALID = accepted, FLAGGED = rejected/anomaly */
   status: 'VALID' | 'EARLY' | 'LATE' | 'FLAGGED';
   message: string;
   locationDescription: string | null;
   deviceEvidenceToken: string | null;
-  windowClassification: 'EARLY' | 'ON_TIME' | 'LATE';
+  /** Timing classification independent of acceptance status */
+  windowClassification: 'EARLY' | 'ON_TIME' | 'LATE' | 'UNKNOWN';
   flaggedForReview: boolean;
 }
 

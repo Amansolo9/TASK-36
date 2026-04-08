@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +20,7 @@ public class AddressController {
     private final AddressService addressService;
 
     @PostMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<AddressDto> create(
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody AddressDto dto) {
@@ -26,12 +28,14 @@ public class AddressController {
     }
 
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<AddressDto>> getMyAddresses(
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(addressService.getByUser(principal.getId()));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<AddressDto> update(
             @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id,
@@ -40,6 +44,7 @@ public class AddressController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id) {

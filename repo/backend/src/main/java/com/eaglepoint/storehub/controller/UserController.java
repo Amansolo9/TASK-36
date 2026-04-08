@@ -32,6 +32,7 @@ public class UserController {
     }
 
     @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<UserDto> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(userService.findById(principal.getId()));
     }
@@ -58,6 +59,7 @@ public class UserController {
     }
 
     @PostMapping("/reauth")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<AuthResponse> reauthenticate(
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestBody ReauthRequest request) {

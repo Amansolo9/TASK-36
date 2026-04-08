@@ -10,6 +10,7 @@ import com.eaglepoint.storehub.enums.FulfillmentMode;
 import com.eaglepoint.storehub.enums.OrderStatus;
 import com.eaglepoint.storehub.enums.Role;
 import com.eaglepoint.storehub.repository.DeliveryZoneRepository;
+import com.eaglepoint.storehub.service.DeliveryZoneGroupService;
 import com.eaglepoint.storehub.repository.OrderRepository;
 import com.eaglepoint.storehub.repository.OrganizationRepository;
 import com.eaglepoint.storehub.repository.UserRepository;
@@ -48,6 +49,9 @@ class OrderServiceTest {
 
     @Mock
     private com.eaglepoint.storehub.repository.PickupRedemptionLogRepository redemptionLogRepository;
+
+    @Mock
+    private DeliveryZoneGroupService deliveryZoneGroupService;
 
     @InjectMocks
     private OrderService orderService;
@@ -207,7 +211,7 @@ class OrderServiceTest {
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> orderService.createOrder(1L, request));
-        assertEquals("Delivery distance exceeds maximum range of 10 miles", ex.getMessage());
+        assertEquals("Delivery distance exceeds maximum range", ex.getMessage());
     }
 
     @Test

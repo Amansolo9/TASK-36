@@ -130,7 +130,8 @@ public class ShippingLabelService {
                 y -= 15;
                 cs.beginText();
                 cs.newLineAtOffset(margin, y);
-                cs.showText(String.format("Distance: %.1f mi", order.getDeliveryDistanceMiles()));
+                cs.showText("Distance: " + (order.getDeliveryDistanceMiles() != null
+                        ? String.format("%.1f mi", order.getDeliveryDistanceMiles()) : "N/A"));
                 cs.endText();
 
                 y -= 15;

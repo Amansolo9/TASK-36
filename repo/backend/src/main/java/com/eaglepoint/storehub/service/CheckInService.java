@@ -32,7 +32,11 @@ public class CheckInService {
 
     private static final Duration EARLY_WINDOW = Duration.ofMinutes(15);
     private static final Duration LATE_WINDOW = Duration.ofMinutes(10);
-    private static final int FRAUD_ATTEMPT_THRESHOLD = 5;
+    /**
+     * Maximum allowed check-in attempts per fraud window. Anomaly triggers when
+     * total attempts (previous + current) EXCEED this value, i.e. more than 5 in 10 minutes.
+     */
+    private static final int MAX_ALLOWED_CHECKIN_ATTEMPTS = 5;
     private static final Duration FRAUD_WINDOW = Duration.ofMinutes(10);
     private static final Duration DUPLICATE_WINDOW = Duration.ofMinutes(60);
 
@@ -91,16 +95,18 @@ public class CheckInService {
                     request.getLocationDescription(), normalizedFingerprint);
         }
 
-        // Fraud detection: >5 attempts in 10 minutes
+        // Fraud detection: more than 5 attempts in 10 minutes (prompt spec: "more than 5 in 10 minutes")
+        // recentAttempts = previously saved check-ins; current attempt adds 1
         long recentAttempts = checkInRepository.countByUserIdSince(userId, now.minus(FRAUD_WINDOW));
-        if (recentAttempts >= FRAUD_ATTEMPT_THRESHOLD) {
+        long totalIncludingCurrent = recentAttempts + 1;
+        if (totalIncludingCurrent > MAX_ALLOWED_CHECKIN_ATTEMPTS) {
             fraudAlertRepository.save(FraudAlert.builder()
                     .user(user)
                     .reason("EXCESSIVE_CHECKIN_ATTEMPTS")
-                    .details("User attempted " + (recentAttempts + 1) + " check-ins within 10 minutes")
+                    .details("User attempted " + totalIncludingCurrent + " check-ins within 10 minutes (max allowed: " + MAX_ALLOWED_CHECKIN_ATTEMPTS + ")")
                     .build());
 
-            log.warn("Fraud detection: excessive check-in attempts ({}) by userId={} within 10 minutes", recentAttempts + 1, userId);
+            log.warn("Fraud detection: excessive check-in attempts ({}) by userId={} within 10 minutes", totalIncludingCurrent, userId);
             // Persist flagged check-in with raw evidence for supervisor review
             CheckIn flagged = checkInRepository.save(CheckIn.builder()
                     .user(user).site(site).timestamp(now).scheduledTime(scheduled)
@@ -111,9 +117,10 @@ public class CheckInService {
                     CheckInStatus.FLAGGED, "Too many check-in attempts. Your account has been flagged.");
         }
 
-        // Duplicate check-in blocking: no valid check-in within 60 minutes
-        long recentValid = checkInRepository.countValidCheckInsSince(
-                userId, request.getSiteId(), now.minus(DUPLICATE_WINDOW));
+        // Duplicate check-in blocking: device-scoped — no valid check-in from same device within 60 minutes
+        long recentValid = (normalizedFingerprint != null)
+                ? checkInRepository.countValidCheckInsByDevice(userId, request.getSiteId(), normalizedFingerprint, now.minus(DUPLICATE_WINDOW))
+                : checkInRepository.countValidCheckInsSince(userId, request.getSiteId(), now.minus(DUPLICATE_WINDOW));
         if (recentValid > 0) {
             log.warn("Duplicate check-in blocked for userId={} at siteId={}", userId, request.getSiteId());
             CheckIn flagged = checkInRepository.save(CheckIn.builder()
@@ -196,9 +203,33 @@ public class CheckInService {
     public List<CheckInResponse> getCheckInsBySite(Long siteId, Instant start, Instant end) {
         List<Long> visibleSites = DataScopeContext.get();
         if (visibleSites != null && !visibleSites.contains(siteId)) {
-            throw new IllegalArgumentException("Access denied: site not in your data scope");
+            throw new com.eaglepoint.storehub.config.AccessDeniedException("Access denied: site not in your data scope");
         }
-        return checkInRepository.findBySiteAndTimeRange(siteId, start, end).stream()
+
+        List<CheckIn> results = checkInRepository.findBySiteAndTimeRange(siteId, start, end);
+
+        // Device scope filtering: when device context is set, only return check-ins from that device
+        String deviceHash = DataScopeContext.getDeviceHash();
+        if (deviceHash != null) {
+            results = results.stream()
+                    .filter(c -> deviceHash.equals(c.getDeviceFingerprint()))
+                    .toList();
+        }
+
+        // Work-order scope filtering: when work-order context is set, only return check-ins
+        // from users with matching shift assignments (work-order = shift)
+        Long workOrderId = DataScopeContext.getWorkOrderId();
+        if (workOrderId != null) {
+            results = results.stream()
+                    .filter(c -> {
+                        var shift = shiftAssignmentRepository.findActiveShift(
+                                c.getUser().getId(), siteId, LocalDate.now());
+                        return shift.isPresent() && shift.get().getId().equals(workOrderId);
+                    })
+                    .toList();
+        }
+
+        return results.stream()
                 .map(c -> buildResponse(c.getId(), c.getUser().getId(), c.getSite().getId(),
                         c.getTimestamp(), c.getScheduledTime(), c.getStatus(), null))
                 .toList();

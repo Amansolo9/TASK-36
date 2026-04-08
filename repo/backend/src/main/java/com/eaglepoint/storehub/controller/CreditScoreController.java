@@ -22,6 +22,7 @@ public class CreditScoreController {
     private final UserRepository userRepository;
 
     @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<CreditScoreDto> getMyScore(@AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(creditScoreService.getScore(principal.getId()));
     }
