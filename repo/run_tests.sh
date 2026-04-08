@@ -53,8 +53,8 @@ if command -v npx &>/dev/null; then
         echo "Installing frontend dependencies..."
         npm ci 2>&1 || npm install 2>&1
     fi
-    echo "Running: npx ng test --watch=false --browsers=ChromeHeadless"
-    if npx ng test --watch=false --browsers=ChromeHeadless 2>&1; then
+    echo "Running: npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox"
+    if npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox 2>&1; then
         echo -e "${GREEN}PASS: Frontend tests${NC}"
         PASS=$((PASS + 1))
     else
