@@ -15,15 +15,6 @@ import { OrderResponse } from '../core/models/fulfillment.model';
   imports: [CommonModule, RouterLink, DataMaskPipe],
   template: `
     <div class="dashboard">
-      <header class="topbar">
-        <h1>StoreHub</h1>
-        <div class="user-info">
-          <span class="role-badge">{{ authService.userRole() }}</span>
-          <span>{{ authService.currentUser()?.username }}</span>
-          <button class="btn-logout" (click)="authService.logout()">Logout</button>
-        </div>
-      </header>
-
       <main class="content">
         <div class="welcome-card">
           <h2>Welcome, {{ authService.currentUser()?.username }}</h2>
@@ -110,16 +101,6 @@ import { OrderResponse } from '../core/models/fulfillment.model';
   `,
   styles: [`
     .dashboard { min-height: 100vh; background: #f5f5f5; }
-    .topbar {
-      background: #1976d2; color: white; padding: 1rem 2rem;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .topbar h1 { margin: 0; font-size: 1.5rem; }
-    .user-info { display: flex; align-items: center; gap: 1rem; }
-    .btn-logout {
-      background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4);
-      color: white; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer;
-    }
     .content { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
     .welcome-card {
       background: white; padding: 1.5rem; border-radius: 8px;
