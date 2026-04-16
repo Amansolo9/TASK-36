@@ -26,88 +26,88 @@ run_section() {
     echo -e "${YELLOW}--- $1 ---${NC}"
 }
 
-# # --- Backend Tests ---
-# run_section "BACKEND UNIT & INTEGRATION TESTS"
+# --- Backend Tests ---
+run_section "BACKEND UNIT & INTEGRATION TESTS"
 
-# MAVEN_CACHE="${HOME}/.m2"
-# mkdir -p "$MAVEN_CACHE"
-# echo "Running backend tests via Maven in Docker..."
-# docker run --rm \
-#     -v "$(pwd)/backend":/app \
-#     -v "${MAVEN_CACHE}":/root/.m2 \
-#     -v /var/run/docker.sock:/var/run/docker.sock \
-#     -w /app \
-#     --network host \
-#     maven:3.9-eclipse-temurin-17 \
-#     mvn test -B -Dtest='unit_tests.**,api_tests.**' 2>&1
-# BE_TEST_EXIT=$?
-# if [ $BE_TEST_EXIT -eq 0 ]; then
-#     echo -e "${GREEN}PASS: Backend tests${NC}"
-#     PASS=$((PASS + 1))
-# else
-#     echo -e "${RED}FAIL: Backend tests${NC}"
-#     FAIL=$((FAIL + 1))
-# fi
+MAVEN_CACHE="${HOME}/.m2"
+mkdir -p "$MAVEN_CACHE"
+echo "Running backend tests via Maven in Docker..."
+docker run --rm \
+    -v "$(pwd)/backend":/app \
+    -v "${MAVEN_CACHE}":/root/.m2 \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -w /app \
+    --network host \
+    maven:3.9-eclipse-temurin-17 \
+    mvn test -B -Dtest='unit_tests.**,api_tests.**' 2>&1
+BE_TEST_EXIT=$?
+if [ $BE_TEST_EXIT -eq 0 ]; then
+    echo -e "${GREEN}PASS: Backend tests${NC}"
+    PASS=$((PASS + 1))
+else
+    echo -e "${RED}FAIL: Backend tests${NC}"
+    FAIL=$((FAIL + 1))
+fi
 
-# # --- Frontend Tests ---
-# run_section "FRONTEND UNIT TESTS"
+# --- Frontend Tests ---
+run_section "FRONTEND UNIT TESTS"
 
-# echo "Running frontend tests via Cypress image (has Chrome)..."
-# docker run --rm \
-#     -v "$(pwd)/frontend":/app \
-#     -w /app \
-#     -e CHROME_BIN=/usr/bin/google-chrome \
-#     --entrypoint "" \
-#     cypress/included:13.7.0 \
-#     bash -c 'npm install --loglevel=error && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox'
-# FE_TEST_EXIT=$?
-# if [ $FE_TEST_EXIT -eq 0 ]; then
-#     echo -e "${GREEN}PASS: Frontend tests${NC}"
-#     PASS=$((PASS + 1))
-# else
-#     echo -e "${RED}FAIL: Frontend tests${NC}"
-#     FAIL=$((FAIL + 1))
-# fi
+echo "Running frontend tests via Cypress image (has Chrome)..."
+docker run --rm \
+    -v "$(pwd)/frontend":/app \
+    -w /app \
+    -e CHROME_BIN=/usr/bin/google-chrome \
+    --entrypoint "" \
+    cypress/included:13.7.0 \
+    bash -c 'npm install --loglevel=error && npx ng test --watch=false --browsers=ChromeHeadlessNoSandbox'
+FE_TEST_EXIT=$?
+if [ $FE_TEST_EXIT -eq 0 ]; then
+    echo -e "${GREEN}PASS: Frontend tests${NC}"
+    PASS=$((PASS + 1))
+else
+    echo -e "${RED}FAIL: Frontend tests${NC}"
+    FAIL=$((FAIL + 1))
+fi
 
-# # --- Frontend Build ---
-# run_section "FRONTEND PRODUCTION BUILD"
+# --- Frontend Build ---
+run_section "FRONTEND PRODUCTION BUILD"
 
-# echo "Running frontend production build via Node in Docker..."
-# docker run --rm \
-#     -v "$(pwd)/frontend":/app \
-#     -w /app \
-#     node:20-alpine \
-#     sh -c 'npm install --loglevel=error && npx ng build --configuration production'
-# FE_BUILD_EXIT=$?
-# if [ $FE_BUILD_EXIT -eq 0 ]; then
-#     echo -e "${GREEN}PASS: Frontend build${NC}"
-#     PASS=$((PASS + 1))
-# else
-#     echo -e "${RED}FAIL: Frontend build${NC}"
-#     FAIL=$((FAIL + 1))
-# fi
+echo "Running frontend production build via Node in Docker..."
+docker run --rm \
+    -v "$(pwd)/frontend":/app \
+    -w /app \
+    node:20-alpine \
+    sh -c 'npm install --loglevel=error && npx ng build --configuration production'
+FE_BUILD_EXIT=$?
+if [ $FE_BUILD_EXIT -eq 0 ]; then
+    echo -e "${GREEN}PASS: Frontend build${NC}"
+    PASS=$((PASS + 1))
+else
+    echo -e "${RED}FAIL: Frontend build${NC}"
+    FAIL=$((FAIL + 1))
+fi
 
-# # --- Static Checks ---
-# run_section "STATIC CHECKS"
+# --- Static Checks ---
+run_section "STATIC CHECKS"
 
-# if [ -f .env ] && git ls-files --error-unmatch .env 2>/dev/null; then
-#     echo -e "${RED}FAIL: .env is tracked in git${NC}"
-#     FAIL=$((FAIL + 1))
-# else
-#     echo -e "${GREEN}PASS: .env not tracked${NC}"
-#     PASS=$((PASS + 1))
-# fi
+if [ -f .env ] && git ls-files --error-unmatch .env 2>/dev/null; then
+    echo -e "${RED}FAIL: .env is tracked in git${NC}"
+    FAIL=$((FAIL + 1))
+else
+    echo -e "${GREEN}PASS: .env not tracked${NC}"
+    PASS=$((PASS + 1))
+fi
 
-# if grep -q 'jwt-secret:.*[a-zA-Z0-9+/=]\{20,\}' backend/src/main/resources/application.yml 2>/dev/null; then
-#     echo -e "${RED}FAIL: Hardcoded secrets in application.yml${NC}"
-#     FAIL=$((FAIL + 1))
-# else
-#     echo -e "${GREEN}PASS: No hardcoded secrets${NC}"
-#     PASS=$((PASS + 1))
-# fi
+if grep -q 'jwt-secret:.*[a-zA-Z0-9+/=]\{20,\}' backend/src/main/resources/application.yml 2>/dev/null; then
+    echo -e "${RED}FAIL: Hardcoded secrets in application.yml${NC}"
+    FAIL=$((FAIL + 1))
+else
+    echo -e "${GREEN}PASS: No hardcoded secrets${NC}"
+    PASS=$((PASS + 1))
+fi
 
-# MIGRATION_COUNT=$(ls backend/src/main/resources/db/migration/V*.sql 2>/dev/null | wc -l)
-# echo -e "${GREEN}INFO: ${MIGRATION_COUNT} Flyway migrations${NC}"
+MIGRATION_COUNT=$(ls backend/src/main/resources/db/migration/V*.sql 2>/dev/null | wc -l)
+echo -e "${GREEN}INFO: ${MIGRATION_COUNT} Flyway migrations${NC}"
 
 # --- FE↔BE End-to-End Tests (Cypress via Docker Compose) ---
 run_section "FE↔BE END-TO-END TESTS (Cypress)"
